@@ -6,9 +6,10 @@ license = "MIT OR Apache-2.0"
 edition = "2018"
 description = "Cast between trait objects using only safe Rust."
 repository = "https://github.com/Lej77/cast_trait_object"
+homepage = "https://github.com/Lej77/cast_trait_object"
+documentation = "https://docs.rs/cast_trait_object_macros"
 categories = ["no-std", "rust-patterns"]
 keywords = ["trait", "cast", "any", "upcast"]
-readme = "README.md"
 include = ["Cargo.toml", "src", "README*", "CHANGELOG*", "LICENSE*"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
