@@ -1,0 +1,19 @@
+[package]
+name = "external_test"
+version = "0.1.0"
+authors = ["Lej77 <31554212+Lej77@users.noreply.github.com>"]
+edition = "2018"
+description = """
+Test usage of the "cast_trait_object" crate from an external crate to ensure `cfg` and `alloc` related things work correctly.
+"""
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[features]
+default = []
+
+alloc = ["cast_trait_object/alloc"]
+proc-macros = ["cast_trait_object/proc-macros"]
+
+[dependencies]
+cast_trait_object = { path = "../", default-features = false }

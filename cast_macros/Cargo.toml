@@ -1,0 +1,21 @@
+[package]
+name = "cast_macros"
+version = "0.1.0"
+authors = ["Lej77 <31554212+Lej77@users.noreply.github.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = {version = "1.0.40", features = ["full"]}
+quote = "1.0.7"
+proc-macro2 = "1.0.21"
+proc-macro-error = "1.0.4"
+
+# Mimic `$crate` inside a proc_macro:
+proc-macro-crate = "0.1.5"
+
+either = "1"
