@@ -1,6 +1,6 @@
 [package]
 name = "cast_trait_object"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Lej77 <31554212+Lej77@users.noreply.github.com>"]
 license = "MIT OR Apache-2.0"
 edition = "2018"
@@ -28,7 +28,7 @@ proc-macros = ["cast_trait_object_macros"]
 
 
 [dependencies]
-cast_trait_object_macros = { optional = true, path = "../cast_trait_object_macros", version = "0.1.0" }
+cast_trait_object_macros = { optional = true, path = "../cast_trait_object_macros", version = "0.1.1" }
 
 
 [package.metadata.docs.rs]
