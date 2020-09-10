@@ -308,6 +308,7 @@ fn my_crate() -> TokenStream2 {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .and_then(|macro_crate| {
+                let macro_crate = macro_crate.join("cast_trait_object");
                 let current = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR")?);
                 Some(macro_crate == PathBuf::from(current))
             })

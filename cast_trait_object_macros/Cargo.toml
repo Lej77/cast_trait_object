@@ -1,8 +1,15 @@
 [package]
-name = "cast_macros"
+name = "cast_trait_object_macros"
 version = "0.1.0"
 authors = ["Lej77 <31554212+Lej77@users.noreply.github.com>"]
+license = "MIT OR Apache-2.0"
 edition = "2018"
+description = "Cast between trait objects using only safe Rust."
+repository = "https://github.com/Lej77/cast_trait_object"
+categories = ["no-std", "rust-patterns"]
+keywords = ["trait", "cast", "any", "upcast", "downcast", "no_std"]
+readme = "README.md"
+include = ["Cargo.toml", "src", "README*", "CHANGELOG*", "LICENSE*"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

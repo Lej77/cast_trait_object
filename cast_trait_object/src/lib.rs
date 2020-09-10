@@ -383,7 +383,7 @@ cfg_with_docs!(
         ///# let foo: &dyn Super = foo.dyn_upcast();
         ///# }
         /// ```
-        pub use cast_macros::dyn_upcast;
+        pub use cast_trait_object_macros::dyn_upcast;
     },
     {
         /// Allow attempting to cast a trait object to another trait object. This can be
@@ -435,7 +435,7 @@ cfg_with_docs!(
         ///# let foo: &dyn Sub = foo.dyn_cast().ok().unwrap();
         ///# }
         /// ```
-        pub use cast_macros::dyn_cast;
+        pub use cast_trait_object_macros::dyn_cast;
     }
 );
 
