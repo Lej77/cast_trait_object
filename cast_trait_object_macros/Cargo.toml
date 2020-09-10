@@ -7,7 +7,7 @@ edition = "2018"
 description = "Cast between trait objects using only safe Rust."
 repository = "https://github.com/Lej77/cast_trait_object"
 categories = ["no-std", "rust-patterns"]
-keywords = ["trait", "cast", "any", "upcast", "downcast", "no_std"]
+keywords = ["trait", "cast", "any", "upcast"]
 readme = "README.md"
 include = ["Cargo.toml", "src", "README*", "CHANGELOG*", "LICENSE*"]
 
