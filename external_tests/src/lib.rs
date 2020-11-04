@@ -30,6 +30,19 @@ mod sub {
 
     pub trait SubSub: Sub {}
 
+    #[cfg(not(feature = "proc-macros"))]
+    impl Super for () {}
+    #[cfg(not(feature = "proc-macros"))]
+    impl_dyn_cast!(() => SuperConfig, SuperConfig2, SuperConfig3, SuperConfig4);
+
+    // Orphan rules don't allow this:
+    /*
+    #[cfg(not(feature = "proc-macros"))]
+    impl Super for fn() {}
+    #[cfg(not(feature = "proc-macros"))]
+    impl_dyn_cast!(fn() as Super => Super, Sub, Sub2, SubSub);
+    */
+
     pub struct TestSuper;
     #[cfg_attr(feature = "proc-macros", dyn_cast(Sub, Sub2, SubSub))]
     #[cfg_attr(feature = "proc-macros", dyn_upcast)]
@@ -62,6 +75,64 @@ mod sub {
     impl_dyn_cast!(TestSubSub as Super => Super, Sub, Sub2, SubSub);
 }
 
+#[cfg(feature = "proc-macros")]
+#[allow(dead_code)]
+pub mod with_macros {
+    use cast_trait_object::*;
+
+    #[dyn_cast(Sub)]
+    #[dyn_upcast]
+    trait Super {}
+    trait Sub: Super {}
+
+    #[dyn_cast(Super => Sub)]
+    #[dyn_upcast(Super)]
+    struct TestSuper;
+    impl Super for TestSuper {}
+
+    #[dyn_cast(Super => Sub)]
+    #[dyn_upcast(Super)]
+    struct TestSub;
+    impl Super for TestSub {}
+    impl Sub for TestSub {}
+
+    // Orphan rules for `GetDynCastConfig` causes this to not compile:
+    /*
+    #[dyn_cast(Sub)]
+    #[dyn_upcast]
+    impl Super for () {}
+    impl Sub for () {}
+    */
+
+    pub mod generic_traits {
+        use cast_trait_object::*;
+
+        #[dyn_upcast]
+        #[dyn_cast(Sub<T>)]
+        trait Super<T> {}
+        trait Sub<T>: Super<T> {}
+
+        // Currently orphan rules prevent this:
+        /*
+        #[dyn_cast(Sub<T>)]
+        #[dyn_upcast]
+        impl<T> Super<T> for (i32,) {}
+        impl<T> Sub<T> for (i32,) {}
+        */
+
+        struct TestSuper;
+        #[dyn_upcast]
+        #[dyn_cast(Sub<T>)]
+        impl<T: Clone> Super<T> for TestSuper where T: core::fmt::Display {}
+
+        struct TestSub;
+        #[dyn_upcast]
+        #[dyn_cast(Sub<T>)]
+        impl<T> Super<T> for TestSub {}
+        impl<T> Sub<T> for TestSub {}
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::sub::*;
@@ -85,6 +156,9 @@ mod tests {
 
         let s: &mut dyn Super = &mut TestSub;
         let _s = s.dyn_cast::<dyn Sub>().ok().expect("&mut cast failed");
+
+        let s: &mut dyn Super = &mut TestSub;
+        let _s: &dyn Sub = s.dyn_cast::<dyn Sub>().ok().expect("&mut to & cast failed");
     }
     #[cfg(feature = "alloc")]
     #[test]

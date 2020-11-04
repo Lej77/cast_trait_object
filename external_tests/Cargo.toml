@@ -11,7 +11,7 @@ Test usage of the "cast_trait_object" crate from an external crate to ensure `cf
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = []
+default = ["alloc", "proc-macros"]
 
 alloc = ["cast_trait_object/alloc"]
 proc-macros = ["cast_trait_object/proc-macros"]

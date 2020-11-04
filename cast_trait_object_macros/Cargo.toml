@@ -1,6 +1,6 @@
 [package]
 name = "cast_trait_object_macros"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Lej77 <31554212+Lej77@users.noreply.github.com>"]
 license = "MIT OR Apache-2.0"
 edition = "2018"
@@ -18,9 +18,9 @@ include = ["Cargo.toml", "src", "README*", "CHANGELOG*", "LICENSE*"]
 proc-macro = true
 
 [dependencies]
-syn = {version = "1.0.40", features = ["full"]}
+syn = {version = "1.0.48", features = ["full"]}
 quote = "1.0.7"
-proc-macro2 = "1.0.21"
+proc-macro2 = "1.0.24"
 proc-macro-error = "1.0.4"
 
 # Mimic `$crate` inside a proc_macro:

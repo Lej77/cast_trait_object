@@ -9,8 +9,8 @@ use {
         parse::{Parse, ParseStream, Parser},
         parse_macro_input,
         punctuated::Punctuated,
-        Generics, Ident, Item, ItemEnum, ItemImpl, ItemStruct, ItemTrait, ItemUnion, Path, Token,
-        TraitBound, TraitBoundModifier, Type, TypePath, Visibility,
+        GenericParam, Generics, Ident, Item, ItemEnum, ItemImpl, ItemStruct, ItemTrait, ItemUnion,
+        LifetimeDef, Path, Token, TraitBound, TraitBoundModifier, Type, TypePath, Visibility,
     },
 };
 
@@ -147,7 +147,17 @@ fn common(item: Item, info: MacroInfo) -> TokenStream2 {
         Item::Trait(item) => {
             let targets = match info.trait_target() {
                 Some(v) => Left(v),
-                None => Right(iter::once(Path::from(item.ident.clone()))),
+                None => Right(iter::once({
+                    let ident = &item.ident;
+                    // Parameters without any bounds:
+                    let params = item.generics.split_for_impl().1;
+                    if item.generics.params.is_empty() {
+                        Path::from(item.ident.clone())
+                    } else {
+                        syn::parse2::<Path>(quote! { #ident #params })
+                            .expect("internal error: failed to generate a path to the defined trait")
+                    }
+                })),
             };
             add_dyn_cast_super_traits(item, targets)
         }
@@ -183,12 +193,9 @@ fn common(item: Item, info: MacroInfo) -> TokenStream2 {
         Item::Impl(ItemImpl {
             ref generics,
             ref self_ty,
-            ref trait_,
+            trait_: Some(ref trait_),
             ..
-        }) if trait_.is_some() => {
-            // We can do this because of the match guard:
-            let trait_ = trait_.as_ref().unwrap();
-
+        }) => {
             let targets = match info.trait_target() {
                 Some(v) => Left(v),
                 None => Right(iter::once(Path::from(trait_.1.clone())))
@@ -232,39 +239,59 @@ fn add_dyn_cast_super_traits(
                 Span::call_site(),
             )
         };
+        let config_path = {
+            let trait_vis = &trait_def.vis;
+            let source_ident = &trait_def.ident;
 
-        let trait_vis = &trait_def.vis;
-        let source_ident = &trait_def.ident;
-        let config_path = match trait_vis {
-            Visibility::Public(_) | Visibility::Crate(_) => {
-                // Hide generated config types in private modules so that they aren't
-                // exposed to users of crates that makes use of this macro:
-                output.extend(quote! {
-                    #[doc(hidden)]
-                    mod #config_name {
-                        #trait_vis struct Config;
+            let generics = &mut trait_def.generics;
+            move_bounds_to_where_clause(generics);
+            let where_clause = generics
+                .where_clause
+                .as_ref()
+                .map(|where_clause| &where_clause.predicates);
+            let params = &generics.params;
+            let phantom_marker: Punctuated<TokenStream2, Token![,]> = params
+                .iter()
+                .map(|param| {
+                    if let syn::GenericParam::Lifetime(_) = param {
+                        quote!(::core::marker::PhantomData<&#param ()>)
+                    } else {
+                        quote!(::core::marker::PhantomData<#param>)
                     }
-                    #my_crate::impl_dyn_cast_config!(
-                        #config_name::Config = #source_ident => #target
-                    );
-                });
-                quote! { #config_name::Config }
-            }
-            Visibility::Restricted(_) | Visibility::Inherited => {
-                // It would be hard to modify the `Restricted` path to be valid
-                // in another module and since the type's visibility is restricted
-                // it won't be visible to users of the current crate anyway, so
-                // lets just generate it in the current module. (For `Inherited`
-                // visibility there is nothing to gain from putting the type
-                // inside another module as the type can't be less visible than
-                // it already is.)
-                output.extend(quote! {
-                    #my_crate::create_dyn_cast_config!(
+                })
+                .collect();
+
+            match trait_vis {
+                Visibility::Public(_) | Visibility::Crate(_) => {
+                    // Hide generated config types in private modules so that they aren't
+                    // exposed to users of crates that makes use of this macro:
+                    output.extend(quote! {
                         #[doc(hidden)]
-                        #trait_vis #config_name = #source_ident => #target
-                    );
-                });
-                quote! { #config_name }
+                        mod #config_name {
+                            #trait_vis struct Config<#params>(#phantom_marker) where #where_clause;
+                        }
+                        #my_crate::impl_dyn_cast_config!(
+                            for<#params> #config_name::Config<#params> where {#where_clause} = #source_ident<#params> => #target
+                        );
+                    });
+                    quote! { #config_name::Config<#params> }
+                }
+                Visibility::Restricted(_) | Visibility::Inherited => {
+                    // It would be hard to modify the `Restricted` path to be valid
+                    // in another module and since the type's visibility is restricted
+                    // it won't be visible to users of the current crate anyway, so
+                    // lets just generate it in the current module. (For `Inherited`
+                    // visibility there is nothing to gain from putting the type
+                    // inside another module as the type can't be less visible than
+                    // it already is.)
+                    output.extend(quote! {
+                        #my_crate::create_dyn_cast_config!(
+                            #[doc(hidden)]
+                            #trait_vis #config_name<#params> where {#where_clause} = #source_ident<#params> => #target
+                        );
+                    });
+                    quote! { #config_name<#params> }
+                }
             }
         };
         trait_def.supertraits.push(
@@ -284,18 +311,75 @@ fn add_dyn_cast_super_traits(
 
 fn generate_dyn_cast_impl(
     self_type: Type,
-    _generics: &Generics,
+    generics: &Generics,
     config: impl Iterator<Item = (Path, Path)>,
 ) -> TokenStream2 {
+    let mut generics = generics.clone();
+    move_bounds_to_where_clause(&mut generics);
+    let where_clause = generics
+        .where_clause
+        .as_ref()
+        .map(|where_clause| &where_clause.predicates)
+        .filter(|predicates| !predicates.is_empty());
+    let params = &generics.params;
+
     let my_crate = my_crate();
     let mut output = TokenStream2::new();
-    // TODO: generate code that takes generics into account.
     for (source, target) in config {
-        output.extend(quote! {
-            #my_crate::impl_dyn_cast!(#self_type as #source => #target);
-        });
+        if params.is_empty() && where_clause.is_none() {
+            // This macro implementation is currently simpler and might allow for
+            // foreign types (more relaxed regarding orphan rules) so we use it
+            // when we can.
+            output.extend(quote! {
+                #my_crate::impl_dyn_cast!(#self_type as #source => #target);
+            });
+        } else {
+            output.extend(quote! {
+                #my_crate::impl_dyn_cast!(for<#params> #self_type as #source where {#where_clause} => #target);
+            });
+        }
     }
     output
+}
+
+/// Move any bounds in the parameters into the where clause.
+///
+/// For example `<T: Clone>` would be changed into `<T> where T: Clone`.
+fn move_bounds_to_where_clause(generics: &mut Generics) {
+    generics.make_where_clause();
+    let where_clause = generics.where_clause.as_mut().unwrap();
+    for outer_param in generics.params.iter_mut() {
+        match outer_param {
+            GenericParam::Type(param) => {
+                let ident = &param.ident;
+                let bounds = &param.bounds;
+                if !bounds.is_empty() {
+                    where_clause.predicates.push(
+                        syn::parse2(quote! {#ident: #bounds})
+                            .expect("internal error: failed to generate a type bound"),
+                    );
+                }
+                *outer_param = GenericParam::Type(ident.clone().into());
+            }
+            GenericParam::Lifetime(param) => {
+                let lifetime = &param.lifetime;
+                let bounds = &param.bounds;
+                if !bounds.is_empty() {
+                    where_clause.predicates.push(
+                        syn::parse2(quote! {#lifetime: #bounds})
+                            .expect("internal error: failed to generate a lifetime bound"),
+                    );
+                }
+                *outer_param =
+                    GenericParam::Lifetime(LifetimeDef::new(param.lifetime.clone()).into());
+            }
+            GenericParam::Const(param) => {
+                param.attrs.clear();
+                param.eq_token.take();
+                param.default.take();
+            }
+        }
+    }
 }
 
 /// Get an identifier that resolves to the current crate. Can be used where `$crate`
