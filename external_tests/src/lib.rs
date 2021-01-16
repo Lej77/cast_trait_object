@@ -131,6 +131,30 @@ pub mod with_macros {
         impl<T> Super<T> for TestSub {}
         impl<T> Sub<T> for TestSub {}
     }
+    pub mod associated_type {
+        use cast_trait_object::*;
+
+        struct Test;
+
+        #[dyn_cast(Sub<Item = Test>)]
+        #[dyn_cast(Sub<Item = ()>)]
+        trait Super {}
+        #[dyn_cast(Sub<Item = Test>)]
+        #[dyn_cast(Sub<Item = ()>)]
+        impl Super for Test {}
+
+        trait Sub: Super {
+            type Item;
+        }
+        impl Sub for Test {
+            type Item = Test;
+        }
+        #[test]
+        fn it_works() {
+            let a: &dyn Super = &Test;
+            let _b: &dyn Sub<Item = Test> = a.dyn_cast::<dyn Sub<Item = Test>>().ok().unwrap();
+        }
+    }
 }
 
 #[cfg(test)]

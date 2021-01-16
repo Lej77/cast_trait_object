@@ -4,13 +4,20 @@ use {
     proc_macro2::{Span, TokenStream as TokenStream2},
     proc_macro_error::*,
     quote::{quote, ToTokens},
-    std::{env, iter, path::PathBuf},
+    std::{
+        collections::hash_map::DefaultHasher,
+        env,
+        hash::{Hash, Hasher},
+        iter,
+        path::PathBuf,
+    },
     syn::{
         parse::{Parse, ParseStream, Parser},
         parse_macro_input,
         punctuated::Punctuated,
         GenericParam, Generics, Ident, Item, ItemEnum, ItemImpl, ItemStruct, ItemTrait, ItemUnion,
-        LifetimeDef, Path, Token, TraitBound, TraitBoundModifier, Type, TypePath, Visibility,
+        LifetimeDef, Path, PathArguments, Token, TraitBound, TraitBoundModifier, Type, TypePath,
+        Visibility,
     },
 };
 
@@ -227,10 +234,31 @@ fn add_dyn_cast_super_traits(
     for target in targets {
         // Try to generate a unique name for the config type:
         let config_name = {
+            // Some generics can't be named easily such as an empty tuple `()`
+            // so we generate a hash of the target path to ensure generic type
+            // parameters in the path still generate unique config type names.
+            let path_hash = {
+                // If path as leading colon or any type parameters.
+                let has_long_path = target.leading_colon.is_some()
+                    || target
+                        .segments
+                        .iter()
+                        .any(|path_seg| !matches!(path_seg.arguments, PathArguments::None));
+                if has_long_path {
+                    let mut hasher = DefaultHasher::new();
+                    target.hash(&mut hasher);
+                    Some(hasher.finish())
+                } else {
+                    None
+                }
+            };
+
             let target_name = target
                 .segments
                 .iter()
                 .map(|path_seg| path_seg.ident.to_string())
+                // Append a hash to the end of the name to make it more unique:
+                .chain(path_hash.map(|v| format!("{:x}_", v)).into_iter())
                 .collect::<Vec<_>>();
             let target_name = target_name.join("_");
 

@@ -7,10 +7,6 @@
 //! used to cast between trait objects and some macros to minimize the boilerplate
 //! needed to implement that trait.
 //!
-//! <!-- Generate README.md using `cargo readme --no-license > README.md` -->
-//! <!-- Generate documentation using `cargo +nightly doc --features docs` -->
-//! <!-- Test all features using `cargo hack test --feature-powerset --skip full --skip default --skip docs --exclude-all-features` -->
-//!
 //! # Usage
 //!
 //! You should use the [`DynCast`] trait in trait bounds or as a supertrait and
