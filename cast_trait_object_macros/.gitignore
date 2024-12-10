@@ -1,5 +1,1 @@
 /target
-
-# Don't include these upstream:
-.vscode
-To do list.txt

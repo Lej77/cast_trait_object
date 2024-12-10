@@ -1,4 +1,5 @@
 [workspace]
+resolver = "2"
 members = [
     "cast_trait_object",
     "cast_trait_object_macros",

@@ -162,6 +162,7 @@
 //! trait Sub<T>: Super<T> {}
 //!
 //! // Since `T` isn't used for `Color` it doesn't need to be `'static`:
+//!# #[expect(dead_code, reason = "the fields are never read")]
 //! struct Color(u8, u8, u8);
 //! #[dyn_cast(Sub<T>)]
 //! #[dyn_upcast]
@@ -285,8 +286,7 @@
 //! it doesn't.
 //!
 //! We can use a clever hack to only preform the coercion if a type actually
-//! implements the target trait. See dtolnay's [Autoref-based stable specialization]
-//! (https://github.com/dtolnay/case-studies/tree/master/autoref-specialization)
+//! implements the target trait. See dtolnay's [Autoref-based stable specialization](https://github.com/dtolnay/case-studies/tree/master/autoref-specialization)
 //! case study for more information about how this hack works. In short the hack
 //! allows us to call one method if a trait bound is met and another method if it
 //! isn't. In this way we can call a helper method that performs the coercion to
@@ -405,7 +405,7 @@
 #![forbid(unsafe_code)]
 // Warnings and docs:
 #![warn(clippy::all)]
-#![deny(broken_intra_doc_links)]
+#![deny(rustdoc::broken_intra_doc_links)]
 #![cfg_attr(feature = "docs", feature(doc_cfg))]
 #![warn(missing_debug_implementations, missing_docs, rust_2018_idioms)]
 #![doc(test(
@@ -449,8 +449,8 @@ cfg_with_docs!(
         /// Allow upcast from a trait to one of its supertraits. This can be used
         /// on traits or on types. For types you need to specify the path to the super
         /// trait inside the parenthesis after the macro name like so:
-        /// `#[dyn_upcast(SuperTrait)]` while for traits don't need to specify anything
-        /// `#[dyn_upcast]`.
+        /// `#[dyn_upcast(SuperTrait)]` while for traits you don't need to specify
+        /// anything `#[dyn_upcast]`.
         ///
         /// # Examples
         ///
@@ -927,7 +927,7 @@ where
 cfg_with_docs!(
     feature = "alloc",
     {
-        impl<'a, T, F> DynCastExtHelper<T> for Box<F>
+        impl<T, F> DynCastExtHelper<T> for Box<F>
         where
             T: ?Sized + 'static,
             F: ?Sized + 'static + DynCast<GetConfig<F, T>> + GetDynCastConfig<T>,
@@ -942,7 +942,7 @@ cfg_with_docs!(
         }
     },
     {
-        impl<'a, T, F> DynCastExtHelper<T> for Rc<F>
+        impl<T, F> DynCastExtHelper<T> for Rc<F>
         where
             T: ?Sized + 'static,
             F: ?Sized + 'static + DynCast<GetConfig<F, T>> + GetDynCastConfig<T>,
@@ -957,7 +957,7 @@ cfg_with_docs!(
         }
     },
     {
-        impl<'a, T, F> DynCastExtHelper<T> for Arc<F>
+        impl<T, F> DynCastExtHelper<T> for Arc<F>
         where
             T: ?Sized + 'static,
             F: ?Sized + 'static + DynCast<GetConfig<F, T>> + GetDynCastConfig<T>,
@@ -1018,7 +1018,7 @@ where
 cfg_with_docs!(
     feature = "alloc",
     {
-        impl<'a, T, F, A> DynCastExtAdvHelper<F, T> for Box<A>
+        impl<T, F, A> DynCastExtAdvHelper<F, T> for Box<A>
         where
             T: ?Sized + 'static,
             F: ?Sized + 'static + GetDynCastConfig<T>,
@@ -1033,7 +1033,7 @@ cfg_with_docs!(
         }
     },
     {
-        impl<'a, T, F, A> DynCastExtAdvHelper<F, T> for Rc<A>
+        impl<T, F, A> DynCastExtAdvHelper<F, T> for Rc<A>
         where
             T: ?Sized + 'static,
             F: ?Sized + 'static + GetDynCastConfig<T>,
@@ -1048,7 +1048,7 @@ cfg_with_docs!(
         }
     },
     {
-        impl<'a, T, F, A> DynCastExtAdvHelper<F, T> for Arc<A>
+        impl<T, F, A> DynCastExtAdvHelper<F, T> for Arc<A>
         where
             T: ?Sized + 'static,
             F: ?Sized + 'static + GetDynCastConfig<T>,
@@ -1174,7 +1174,7 @@ macro_rules! impl_dyn_cast {
         // Path to config type:
         $target_trait:path
     ) => {
-        const _: fn() = || {
+        const _: () = {
             impl< $($lifetime,)* $($generics,)* >
             $crate::DerivedDynCast<
                 $crate::ConcreteDynCastConfig<
@@ -1240,7 +1240,7 @@ macro_rules! impl_dyn_cast {
         // Path to config type:
         $config_type:ty
     ) => {
-        const _: fn() = || {
+        const _: () = {
             impl< $($lifetime,)* $($generics,)* >
             $crate::DynCast<  $config_type  >
             for
@@ -1299,7 +1299,7 @@ macro_rules! impl_dyn_cast {
     // be supported.
     ($self_type:ty => $($config_type:ty),*) => {
         $(
-            const _: fn() = || {
+            const _: () = {
                 type __SelfType = $self_type;
                 type __ConfigType = $config_type;
                 $crate::impl_dyn_cast!(for<> __SelfType => __ConfigType);
@@ -1328,7 +1328,7 @@ macro_rules! impl_dyn_cast {
         // Path to config type:
         $target_trait:path
     ) => {
-        const _: fn() = || {
+        const _: () = {
             extern crate alloc;
 
 
@@ -1451,7 +1451,7 @@ macro_rules! impl_dyn_cast {
         // Path to config type:
         $config_type:ty
     ) => {
-        const _: fn() = || {
+        const _: () = {
             extern crate alloc;
 
 
@@ -1567,7 +1567,7 @@ macro_rules! impl_dyn_cast {
     // be supported.
     ($self_type:ty => $($config_type:ty),*) => {
         $(
-            const _: fn() = || {
+            const _: () = {
                 type __SelfType = $self_type;
                 type __ConfigType = $config_type;
                 $crate::impl_dyn_cast!(for<> __SelfType => __ConfigType);
@@ -1637,7 +1637,7 @@ macro_rules! impl_dyn_cast_config {
         // Path to target trait:
         $target_trait:path
     ) => {
-        const _: fn() = || {
+        const _: () = {
             impl< $($lifetime,)* $($generics,)* >
             $crate::DynCastConfig
             for
@@ -1668,7 +1668,7 @@ macro_rules! impl_dyn_cast_config {
         };
     };
     ($config_type:ty = $source_trait:path => $target_trait:path) => {
-        const _: fn() = || {
+        const _: () = {
             type __ConfigType = $config_type;
             $crate::impl_dyn_cast_config!(for<> __ConfigType = $source_trait => $target_trait);
         };

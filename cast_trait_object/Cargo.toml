@@ -4,7 +4,7 @@ name = "cast_trait_object"
 # - Generate README.md using `cargo readme --no-license > README.md`
 # - Generate documentation using `cargo +nightly doc --features docs` to check for broken links.
 # - Test all features using `cargo hack test --feature-powerset --skip full --skip default --skip docs --exclude-all-features`
-version = "0.1.3"
+version = "0.1.4"
 authors = ["Lej77 <31554212+Lej77@users.noreply.github.com>"]
 license = "MIT OR Apache-2.0"
 edition = "2018"
@@ -28,11 +28,11 @@ docs = ["full"]
 # Enable features that require an allocator.
 alloc = []
 # Enable procedural macros.
-proc-macros = ["cast_trait_object_macros"]
+proc-macros = ["dep:cast_trait_object_macros"]
 
 
 [dependencies]
-cast_trait_object_macros = { optional = true, path = "../cast_trait_object_macros", version = "0.1.3" }
+cast_trait_object_macros = { optional = true, path = "../cast_trait_object_macros", version = "=0.1.4" }
 
 
 [package.metadata.docs.rs]

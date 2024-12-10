@@ -2,7 +2,6 @@ use {
     either::*,
     proc_macro::TokenStream,
     proc_macro2::{Span, TokenStream as TokenStream2},
-    proc_macro_error::*,
     quote::{quote, ToTokens},
     std::{
         collections::hash_map::DefaultHasher,
@@ -13,40 +12,45 @@ use {
     },
     syn::{
         parse::{Parse, ParseStream, Parser},
-        parse_macro_input,
         punctuated::Punctuated,
         GenericParam, Generics, Ident, Item, ItemEnum, ItemImpl, ItemStruct, ItemTrait, ItemUnion,
-        LifetimeDef, Path, PathArguments, Token, TraitBound, TraitBoundModifier, Type, TypePath,
+        LifetimeParam, Path, PathArguments, Token, TraitBound, TraitBoundModifier, Type, TypePath,
         Visibility,
     },
 };
 
-#[proc_macro_error]
 #[proc_macro_attribute]
 pub fn dyn_upcast(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let item = parse_macro_input!(item as Item);
     common(
-        item,
+        item.clone().into(),
         MacroInfo {
             macro_type: MacroType::Upcast,
             attr: attr.into(),
         },
     )
-    .into()
+    .map(TokenStream::from)
+    .unwrap_or_else(|e| {
+        let mut item = item.clone();
+        item.extend(TokenStream::from(e.into_compile_error()));
+        item
+    })
 }
 
-#[proc_macro_error]
 #[proc_macro_attribute]
 pub fn dyn_cast(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let item = parse_macro_input!(item as Item);
     common(
-        item,
+        item.clone().into(),
         MacroInfo {
             macro_type: MacroType::Cast,
             attr: attr.into(),
         },
     )
-    .into()
+    .map(TokenStream::from)
+    .unwrap_or_else(|e| {
+        let mut item = item.clone();
+        item.extend(TokenStream::from(e.into_compile_error()));
+        item
+    })
 }
 
 #[derive(Clone, Copy, Debug, Ord, PartialOrd, Eq, PartialEq)]
@@ -63,6 +67,12 @@ impl MacroType {
     }
 }
 
+enum TraitTarget {
+    /// Should cast to `Self`.
+    Upcast,
+    Cast(Punctuated<Path, Token![,]>),
+}
+
 struct MacroInfo {
     macro_type: MacroType,
     attr: TokenStream2,
@@ -71,49 +81,81 @@ impl MacroInfo {
     fn name(&self) -> &'static str {
         self.macro_type.name()
     }
-    /// Returns `None` if we should cast to `Self`.
-    fn trait_target(self) -> Option<impl Iterator<Item = Path>> {
+    fn trait_target(self) -> syn::Result<TraitTarget> {
         let name = self.name();
         let attr = self.attr;
-        match self.macro_type {
+        Ok(match self.macro_type {
             MacroType::Upcast => {
                 if !attr.is_empty() {
-                    abort!(
+                    return Err(syn::Error::new_spanned(
                         attr,
-                        "{} doesn't take any arguments when used on a trait.",
-                        name
-                    );
+                        format!("{name} doesn't take any arguments when used on a trait."),
+                    ));
                 }
-                None
+                TraitTarget::Upcast
             }
             MacroType::Cast => {
                 let parser = Punctuated::<Path, Token![,]>::parse_terminated;
-                let list = parser.parse2(attr).expect_or_abort("expected a comma separated list of paths to traits which this trait should support casting into.");
+                let list = match parser.parse2(attr) {
+                    Ok(list) => list,
+                    Err(e) => {
+                        return Err(syn::Error::new(
+                            e.span(),
+                            "expected a comma separated list of paths to traits \
+                            which this trait should support casting into.\nCaused by: {e}",
+                        ));
+                    }
+                };
                 if list.is_empty() {
-                    abort!(list, "expected a comma separated list of paths to traits which this trait should support casting into.");
+                    return Err(syn::Error::new_spanned(
+                        list,
+                        "expected a comma separated list of paths to traits \
+                        which this trait should support casting into.",
+                    ));
                 }
-                Some(list.into_iter())
+                TraitTarget::Cast(list)
             }
-        }
+        })
     }
     /// Use when we don't know the source trait. This will require that users specify both
     /// the source and target traits (`Source => Target`) for casting and only the source
     /// (`Source`) when upcasting.
-    fn full_cast_config(self) -> impl Iterator<Item = (Path, Path)> {
+    fn full_cast_config(self) -> syn::Result<impl Iterator<Item = (Path, Path)>> {
         let attr = self.attr;
-        match self.macro_type {
+        Ok(match self.macro_type {
             MacroType::Upcast => {
                 let parser = Punctuated::<Path, Token![,]>::parse_terminated;
-                let list = parser.parse2(attr)
-                    .expect_or_abort("expected a comma separated list of paths to traits that this type implements and wants to support upcasting into.");
+                let list = parser
+                    .parse2(attr)
+                    .map_err(|e| {
+                        syn::Error::new(
+                            e.span(),
+                            format!(
+                                "expected a comma separated list of paths to traits that this \
+                                type implements and wants to support upcasting into.\nCaused by: {e}"
+                            ),
+                        )
+                    })?;
                 if list.is_empty() {
-                    abort!(list, "expected a comma separated list of paths to traits that this type implements and wants to support upcasting into.");
+                    return Err(syn::Error::new_spanned(
+                        list,
+                        "expected a comma separated list of paths to traits \
+                        that this type implements and wants to support upcasting into.",
+                    ));
                 }
                 Left(list.into_iter().map(|path| (path.clone(), path)))
             }
             MacroType::Cast => {
-                let list = syn::parse2::<SourceWithTargets>(attr)
-                    .expect_or_abort("expected a source trait that this type implements followed by an `=>` and then a comma separated list of paths to traits that this type should support casting into.");
+                let list = syn::parse2::<SourceWithTargets>(attr).map_err(|e| {
+                    syn::Error::new(
+                        e.span(),
+                        format!(
+                            "expected a source trait that this type implements followed by an `=>` \
+                            and then a comma separated list of paths to traits that this type \
+                            should support casting into.\nCaused by: {e}"
+                        ),
+                    )
+                })?;
                 let source = list.source;
                 Right(
                     list.targets
@@ -121,7 +163,7 @@ impl MacroInfo {
                         .map(move |target| (source.clone(), target)),
                 )
             }
-        }
+        })
     }
 }
 
@@ -136,7 +178,7 @@ impl Parse for SourceWithTargets {
         let this = Self {
             source: input.parse()?,
             arrow: input.parse()?,
-            targets: input.parse_terminated(Path::parse)?,
+            targets: input.parse_terminated(Path::parse, Token![,])?,
         };
         if this.targets.first().is_none() {
             Err(input.error("expected at least one path"))
@@ -146,27 +188,26 @@ impl Parse for SourceWithTargets {
     }
 }
 
-fn common(item: Item, info: MacroInfo) -> TokenStream2 {
-    // If something goes wrong just output the input:
-    set_dummy(item.to_token_stream());
-
-    match item {
+fn common(item: TokenStream2, info: MacroInfo) -> syn::Result<TokenStream2> {
+    let item = syn::parse2::<Item>(item.clone())?;
+    Ok(match item {
         Item::Trait(item) => {
-            let targets = match info.trait_target() {
-                Some(v) => Left(v),
-                None => Right(iter::once({
+            let targets = match info.trait_target()? {
+                TraitTarget::Cast(v) => Left(v),
+                TraitTarget::Upcast => Right(iter::once({
                     let ident = &item.ident;
                     // Parameters without any bounds:
                     let params = item.generics.split_for_impl().1;
                     if item.generics.params.is_empty() {
                         Path::from(item.ident.clone())
                     } else {
-                        syn::parse2::<Path>(quote! { #ident #params })
-                            .expect("internal error: failed to generate a path to the defined trait")
+                        syn::parse2::<Path>(quote! { #ident #params }).expect(
+                            "internal error: failed to generate a path to the defined trait",
+                        )
                     }
                 })),
             };
-            add_dyn_cast_super_traits(item, targets)
+            add_dyn_cast_super_traits(item, targets.into_iter())?
         }
         Item::Enum(ItemEnum {
             ref ident,
@@ -190,8 +231,8 @@ fn common(item: Item, info: MacroInfo) -> TokenStream2 {
                 }
                 .into(),
                 generics,
-                info.full_cast_config(),
-            );
+                info.full_cast_config()?,
+            )?;
             // Keep the original item unmodified and just append to it:
             let mut stream = item.into_token_stream();
             stream.extend(extra);
@@ -203,33 +244,38 @@ fn common(item: Item, info: MacroInfo) -> TokenStream2 {
             trait_: Some(ref trait_),
             ..
         }) => {
-            let targets = match info.trait_target() {
-                Some(v) => Left(v),
-                None => Right(iter::once(Path::from(trait_.1.clone())))
+            let targets = match info.trait_target()? {
+                TraitTarget::Cast(v) => Left(v),
+                TraitTarget::Upcast => Right(iter::once(trait_.1.clone())),
             };
             let extra = generate_dyn_cast_impl(
                 (**self_ty).clone(),
                 generics,
-                targets.map(|target| (trait_.1.clone(), target))
+                targets.into_iter().map(|target| (trait_.1.clone(), target)),
             );
             // Keep the original item unmodified and just append to it:
             let mut stream = item.into_token_stream();
             stream.extend(extra);
             stream
         }
-        other => abort!(
-            other,
-            "{} can only be used on trait, struct, enum or union definitions and on trait implementations.",
-            info.name()
-        ),
-    }
+        other => {
+            return Err(syn::Error::new_spanned(
+                other,
+                format!(
+                    "{} can only be used on trait, struct, enum or union \
+                    definitions and on trait implementations.",
+                    info.name()
+                ),
+            ))
+        }
+    })
 }
 
 fn add_dyn_cast_super_traits(
     mut trait_def: ItemTrait,
     targets: impl Iterator<Item = Path>,
-) -> TokenStream2 {
-    let my_crate = my_crate();
+) -> syn::Result<TokenStream2> {
+    let my_crate = my_crate()?;
     let mut output = TokenStream2::new();
     for target in targets {
         // Try to generate a unique name for the config type:
@@ -290,7 +336,7 @@ fn add_dyn_cast_super_traits(
                 .collect();
 
             match trait_vis {
-                Visibility::Public(_) | Visibility::Crate(_) => {
+                Visibility::Public(_) => {
                     // Hide generated config types in private modules so that they aren't
                     // exposed to users of crates that makes use of this macro:
                     output.extend(quote! {
@@ -334,14 +380,14 @@ fn add_dyn_cast_super_traits(
         )
     }
     output.extend(trait_def.into_token_stream());
-    output
+    Ok(output)
 }
 
 fn generate_dyn_cast_impl(
     self_type: Type,
     generics: &Generics,
     config: impl Iterator<Item = (Path, Path)>,
-) -> TokenStream2 {
+) -> syn::Result<TokenStream2> {
     let mut generics = generics.clone();
     move_bounds_to_where_clause(&mut generics);
     let where_clause = generics
@@ -351,7 +397,7 @@ fn generate_dyn_cast_impl(
         .filter(|predicates| !predicates.is_empty());
     let params = &generics.params;
 
-    let my_crate = my_crate();
+    let my_crate = my_crate()?;
     let mut output = TokenStream2::new();
     for (source, target) in config {
         if params.is_empty() && where_clause.is_none() {
@@ -367,7 +413,7 @@ fn generate_dyn_cast_impl(
             });
         }
     }
-    output
+    Ok(output)
 }
 
 /// Move any bounds in the parameters into the where clause.
@@ -398,8 +444,7 @@ fn move_bounds_to_where_clause(generics: &mut Generics) {
                             .expect("internal error: failed to generate a lifetime bound"),
                     );
                 }
-                *outer_param =
-                    GenericParam::Lifetime(LifetimeDef::new(param.lifetime.clone()).into());
+                *outer_param = GenericParam::Lifetime(LifetimeParam::new(param.lifetime.clone()));
             }
             GenericParam::Const(param) => {
                 param.attrs.clear();
@@ -412,7 +457,7 @@ fn move_bounds_to_where_clause(generics: &mut Generics) {
 
 /// Get an identifier that resolves to the current crate. Can be used where `$crate`
 /// would be used in a declarative macro.
-fn my_crate() -> TokenStream2 {
+fn my_crate() -> syn::Result<TokenStream2> {
     const ORIGINAL_NAME: &str = "cast_trait_object";
 
     let is_test = {
@@ -422,21 +467,26 @@ fn my_crate() -> TokenStream2 {
             .and_then(|macro_crate| {
                 let macro_crate = macro_crate.join("cast_trait_object");
                 let current = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR")?);
-                Some(macro_crate == PathBuf::from(current))
+                Some(macro_crate == current)
             })
     };
-    if is_test.unwrap_or(false) {
+    Ok(if is_test.unwrap_or(false) {
         quote!(crate)
     } else {
-        let name = proc_macro_crate::crate_name(ORIGINAL_NAME).unwrap_or_else(|e| {
-            abort_call_site!(
-                "expected `{}` to be present in `Cargo.toml`: {}",
-                ORIGINAL_NAME,
-                e
-            );
-            // ORIGINAL_NAME.to_string()
-        });
-        let ident = Ident::new(&name, Span::call_site());
-        quote! { ::#ident }
-    }
+        match proc_macro_crate::crate_name(ORIGINAL_NAME) {
+            Ok(name) => match name {
+                proc_macro_crate::FoundCrate::Itself => quote!(crate),
+                proc_macro_crate::FoundCrate::Name(name) => {
+                    let ident = Ident::new(&name, Span::call_site());
+                    quote!(::#ident)
+                }
+            },
+            Err(e) => {
+                return Err(syn::Error::new(
+                    Span::call_site(),
+                    format!("expected `{ORIGINAL_NAME}` to be present in `Cargo.toml`: {e}",),
+                ))
+            }
+        }
+    })
 }

@@ -231,8 +231,7 @@ the type implements the `Target` trait and `Err(value as &dyn Source)` if
 it doesn't.
 
 We can use a clever hack to only preform the coercion if a type actually
-implements the target trait. See dtolnay's [Autoref-based stable specialization]
-(https://github.com/dtolnay/case-studies/tree/master/autoref-specialization)
+implements the target trait. See dtolnay's [Autoref-based stable specialization](https://github.com/dtolnay/case-studies/tree/master/autoref-specialization)
 case study for more information about how this hack works. In short the hack
 allows us to call one method if a trait bound is met and another method if it
 isn't. In this way we can call a helper method that performs the coercion to
